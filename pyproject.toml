@@ -1,6 +1,9 @@
 [tool.poetry]
 package-mode = false
 
+[tool.poetry.group.dev.dependencies]
+sphinx = "^8.2.3"
+
 [project]
 name = "goit-pythonweb-hw-12"
 version = "0.1.0"
