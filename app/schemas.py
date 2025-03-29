@@ -23,11 +23,19 @@ class ContactUpdate(ContactBase):
 class ContactResponse(ContactBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class UserCreate(BaseModel):
+    """
+    Schema for user registration request.
+
+    Attributes:
+        username (str): The username of the user.
+        email (EmailStr): The email address of the user.
+        password (str): The password for the user's account.
+    """
+
     username: str
     email: EmailStr
     password: str
@@ -41,8 +49,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     avatar_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class Token(BaseModel):

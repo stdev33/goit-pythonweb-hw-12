@@ -24,14 +24,43 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def get_password_hash(password: str) -> str:
+    """
+    Hashes the provided password using bcrypt.
+
+    Args:
+        password (str): The plain text password.
+
+    Returns:
+        str: The hashed password.
+    """
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verifies that a plain password matches the hashed password.
+
+    Args:
+        plain_password (str): The plain text password.
+        hashed_password (str): The hashed password to compare against.
+
+    Returns:
+        bool: True if the password matches, False otherwise.
+    """
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Generates a JWT access token.
+
+    Args:
+        data (dict): The data to include in the token payload.
+        expires_delta (Optional[timedelta]): The token expiration time.
+
+    Returns:
+        str: The generated JWT token.
+    """
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -43,6 +72,17 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def authenticate_user(db: Session, email: str, password: str):
+    """
+    Authenticates a user by verifying email and password.
+
+    Args:
+        db (Session): SQLAlchemy session for database access.
+        email (str): The user's email.
+        password (str): The user's password.
+
+    Returns:
+        User or None: The authenticated user or None if authentication fails.
+    """
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
         return None
@@ -52,6 +92,19 @@ def authenticate_user(db: Session, email: str, password: str):
 async def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ):
+    """
+    Retrieves the current user based on the provided JWT token.
+
+    Args:
+        token (str): The JWT token.
+        db (Session): SQLAlchemy session for database access.
+
+    Returns:
+        User: The current authenticated user.
+
+    Raises:
+        HTTPException: If the token is invalid or user is not found.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -71,6 +124,15 @@ async def get_current_user(
 
 
 def create_verification_token(email: str) -> str:
+    """
+    Creates a JWT token for email verification.
+
+    Args:
+        email (str): The email address to verify.
+
+    Returns:
+        str: The generated verification token.
+    """
     expire = datetime.utcnow() + timedelta(hours=24)
     data = {"sub": email, "exp": expire}
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
@@ -82,6 +144,19 @@ def create_verification_token(email: str) -> str:
     status_code=status.HTTP_201_CREATED,
 )
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    """
+    Registers a new user and sends a verification email.
+
+    Args:
+        user (UserCreate): The user registration data.
+        db (Session): SQLAlchemy session for database access.
+
+    Returns:
+        UserResponse: The registered user data.
+
+    Raises:
+        HTTPException: If the email is already registered.
+    """
     existing_user = (
         db.query(models.User).filter(models.User.email == user.email).first()
     )
@@ -109,6 +184,19 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.get("/verify-email")
 def verify_email(token: str, db: Session = Depends(get_db)):
+    """
+    Verifies a user's email address using a JWT token.
+
+    Args:
+        token (str): The verification token.
+        db (Session): SQLAlchemy session for database access.
+
+    Returns:
+        dict: A success message if verification succeeds.
+
+    Raises:
+        HTTPException: If the token is invalid or the user is already verified.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
@@ -135,6 +223,19 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
+    """
+    Authenticates a user and returns a JWT access token.
+
+    Args:
+        form_data (OAuth2PasswordRequestForm): The login credentials.
+        db (Session): SQLAlchemy session for database access.
+
+    Returns:
+        dict: The access token and token type.
+
+    Raises:
+        HTTPException: If authentication fails.
+    """
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(

@@ -11,7 +11,22 @@ EMAIL_FROM = os.getenv("EMAIL_FROM")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 
+"""
+This module provides functionality to send email verification messages using SendGrid.
+"""
+
+
 def send_verification_email(to_email: str, token: str):
+    """
+    Sends a verification email to the specified email address using the provided token.
+
+    Args:
+        to_email (str): The recipient's email address.
+        token (str): The token used to generate the verification link.
+
+    Raises:
+        HTTPException: If the email fails to send or an exception occurs during the process.
+    """
     subject = "Verify Your Email"
     verification_link = f"{FRONTEND_URL}/auth/verify-email?token={token}"
 
