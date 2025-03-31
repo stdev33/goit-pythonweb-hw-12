@@ -3,6 +3,8 @@ package-mode = false
 
 [tool.poetry.group.dev.dependencies]
 sphinx = "^8.2.3"
+pytest = "^8.3.5"
+pytest-cov = "^6.0.0"
 
 [project]
 name = "goit-pythonweb-hw-12"
