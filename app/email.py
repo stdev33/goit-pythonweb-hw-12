@@ -16,31 +16,13 @@ This module provides functionality to send email verification messages using Sen
 """
 
 
-def send_verification_email(to_email: str, token: str):
-    """
-    Sends a verification email to the specified email address using the provided token.
-
-    Args:
-        to_email (str): The recipient's email address.
-        token (str): The token used to generate the verification link.
-
-    Raises:
-        HTTPException: If the email fails to send or an exception occurs during the process.
-    """
-    subject = "Verify Your Email"
-    verification_link = f"{FRONTEND_URL}/auth/verify-email?token={token}"
-
+def _send_email(to_email: str, subject: str, html_content: str):
     message = Mail(
         from_email=EMAIL_FROM,
         to_emails=to_email,
         subject=subject,
-        html_content=f"""
-        <h1>Verify Your Email Address</h1>
-        <p>Click the link below to verify your email address:</p>
-        <a href="{verification_link}">Verify Email</a>
-        """,
+        html_content=html_content,
     )
-
     try:
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         response = sg.send(message)
@@ -48,3 +30,25 @@ def send_verification_email(to_email: str, token: str):
             raise HTTPException(status_code=500, detail="Email failed to send")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email error: {str(e)}")
+
+
+def send_verification_email(to_email: str, token: str):
+    subject = "Verify Your Email"
+    verification_link = f"{FRONTEND_URL}/auth/verify-email?token={token}"
+    html_content = f"""
+    <h1>Verify Your Email Address</h1>
+    <p>Click the link below to verify your email address:</p>
+    <a href="{verification_link}">Verify Email</a>
+    """
+    _send_email(to_email, subject, html_content)
+
+
+def send_reset_password_email(to_email: str, token: str):
+    subject = "Reset Your Password"
+    reset_link = f"{FRONTEND_URL}/auth/reset-password?token={token}"
+    html_content = f"""
+    <h1>Reset Your Password</h1>
+    <p>Click the link below to reset your password:</p>
+    <a href="{reset_link}">Reset Password</a>
+    """
+    _send_email(to_email, subject, html_content)

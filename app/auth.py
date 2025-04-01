@@ -1,11 +1,14 @@
 from . import models, schemas
 from .database import get_db
-from .email import send_verification_email
+from .email import send_verification_email, send_reset_password_email
 from .redis_cache import get_redis_client
 from datetime import datetime, timedelta, UTC
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Form
+from fastapi.requests import Request
+from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -19,6 +22,8 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 REDIS_CACHE_EXPIRATION = int(os.getenv("REDIS_CACHE_EXPIRATION", 300))
+
+templates = Jinja2Templates(directory="templates")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -69,7 +74,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.now(UTC) + expires_delta
     else:
         expire = datetime.now(UTC) + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "iat": datetime.now(UTC).timestamp()})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -118,6 +123,10 @@ async def get_current_user(
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
+
+        token_iat = payload.get("iat")
+        if token_iat is None:
+            raise credentials_exception
     except JWTError:
         raise credentials_exception
 
@@ -125,15 +134,33 @@ async def get_current_user(
 
     redis_key = f"user:{email}"
     cached_user = redis_client.get(redis_key)
+
     if cached_user:
-        return schemas.UserResponse(**json.loads(cached_user))
+        user = schemas.UserResponse(**json.loads(cached_user))
+        if (
+            user.last_password_reset
+            and token_iat < user.last_password_reset.timestamp()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is no longer valid. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
 
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
 
-    redis_user_data = schemas.UserResponse.model_validate(user).model_dump()
-    redis_client.set(redis_key, json.dumps(redis_user_data), ex=REDIS_CACHE_EXPIRATION)
+    if user.last_password_reset and token_iat < user.last_password_reset.timestamp():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token is no longer valid. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    redis_user = schemas.UserResponse.model_validate(user)
+    redis_client.set(redis_key, redis_user.model_dump_json(), ex=REDIS_CACHE_EXPIRATION)
 
     return schemas.UserResponse.model_validate(user)
 
@@ -151,6 +178,90 @@ def create_verification_token(email: str) -> str:
     expire = datetime.now(UTC) + timedelta(hours=24)
     data = {"sub": email, "exp": expire}
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+
+@router.post("/request-password-reset", status_code=200)
+def request_password_reset(email: str, db: Session = Depends(get_db)):
+    """
+    Handles password reset request by generating a token and sending it via email.
+
+    Args:
+        email (str): The user's email address.
+        db (Session): SQLAlchemy session for database access.
+
+    Returns:
+        dict: Success message.
+
+    Raises:
+        HTTPException: If the email is not found.
+    """
+    user: models.User | None = (
+        db.query(models.User).filter(models.User.email == email).first()
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reset_token_expiration = datetime.now(UTC) + timedelta(hours=1)
+    reset_token = jwt.encode(
+        {"sub": user.email, "exp": reset_token_expiration},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    send_reset_password_email(user.email, reset_token)
+
+    return {"message": "Password reset email sent successfully."}
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+def get_reset_password_form(request: Request, token: str):
+    """
+    Renders a simple HTML form to reset the password.
+    """
+    return templates.TemplateResponse(
+        "reset_password_form.html", {"request": request, "token": token}
+    )
+
+
+@router.post("/reset-password", status_code=200)
+def reset_password(
+    token: str = Form(...), new_password: str = Form(...), db: Session = Depends(get_db)
+):
+    """
+    Resets the user's password using a valid reset token.
+
+    Args:
+        token (str): The reset token sent via email.
+        new_password (str): The new password to set.
+        db (Session): SQLAlchemy session for database access.
+
+    Returns:
+        dict: A success message.
+
+    Raises:
+        HTTPException: If the token is invalid or the user is not found.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid token")
+
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user.hashed_password = get_password_hash(new_password)
+        user.last_password_reset = datetime.now(UTC)
+        db.commit()
+
+        redis_client = get_redis_client()
+        redis_key = f"user:{user.email}"
+        redis_client.delete(redis_key)
+
+        return {"message": "Password reset successful."}
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
 
 
 @router.post(

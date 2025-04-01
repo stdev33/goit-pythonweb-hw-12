@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Date, Boolean
+from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime
 from .database import Base
+from datetime import datetime, timedelta, UTC
 
 
 class Contact(Base):
@@ -48,6 +49,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    last_password_reset = Column(DateTime, default=datetime.now(UTC))
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)

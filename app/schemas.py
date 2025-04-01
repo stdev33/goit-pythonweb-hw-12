@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 
@@ -48,6 +48,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     avatar_url: Optional[str] = None
+    last_password_reset: datetime | None = None
 
     model_config = {"from_attributes": True}
 
