@@ -1,21 +1,24 @@
-from datetime import datetime, timedelta, UTC
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 from . import models, schemas
 from .database import get_db
 from .email import send_verification_email
-import os
+from .redis_cache import get_redis_client
+from datetime import datetime, timedelta, UTC
 from dotenv import load_dotenv
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session
+from typing import Optional
+import json
+import os
 
 load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
+REDIS_CACHE_EXPIRATION = int(os.getenv("REDIS_CACHE_EXPIRATION", 300))
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -91,7 +94,7 @@ def authenticate_user(db: Session, email: str, password: str):
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-):
+) -> schemas.UserResponse:
     """
     Retrieves the current user based on the provided JWT token.
 
@@ -117,10 +120,22 @@ async def get_current_user(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
+
+    redis_client = get_redis_client()
+
+    redis_key = f"user:{email}"
+    cached_user = redis_client.get(redis_key)
+    if cached_user:
+        return schemas.UserResponse(**json.loads(cached_user))
+
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
-    return user
+
+    redis_user_data = schemas.UserResponse.model_validate(user).model_dump()
+    redis_client.set(redis_key, json.dumps(redis_user_data), ex=REDIS_CACHE_EXPIRATION)
+
+    return schemas.UserResponse.model_validate(user)
 
 
 def create_verification_token(email: str) -> str:
