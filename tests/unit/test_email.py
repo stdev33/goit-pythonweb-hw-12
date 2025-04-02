@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
-from app.email import send_verification_email
+from app.email_utils import send_verification_email
 
 
 @patch("app.email.SendGridAPIClient")

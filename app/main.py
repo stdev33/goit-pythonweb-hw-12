@@ -1,5 +1,7 @@
 from . import crud, models, schemas
-from .auth import get_current_user
+from .dependencies import require_admin_user_from_cookie
+from .security import get_current_user
+from .auth_ui_routes import router as auth_ui
 from .auth import router as auth_router
 from .cloudinary_service import upload_avatar
 from .database import engine, get_db
@@ -38,6 +40,7 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
+app.include_router(auth_ui)
 app.include_router(auth_router)
 
 if __name__ == "__main__":
@@ -73,7 +76,7 @@ async def read_users_me(
 @app.post("/upload-avatar", response_model=schemas.UserResponse)
 async def upload_avatar_route(
     file: UploadFile = File(...),
-    current_user: schemas.UserResponse = Depends(get_current_user),
+    current_user: schemas.UserResponse = Depends(require_admin_user_from_cookie),
     db: Session = Depends(get_db),
 ):
     """

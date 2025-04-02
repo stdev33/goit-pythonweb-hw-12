@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from datetime import date, datetime
 from typing import Optional
+from .enums import UserRole
 
 
 class ContactBase(BaseModel):
@@ -39,6 +40,7 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
+    role: Optional[UserRole] = UserRole.user
 
 
 class UserResponse(BaseModel):
@@ -49,6 +51,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     avatar_url: Optional[str] = None
     last_password_reset: datetime | None = None
+    role: UserRole
 
     model_config = {"from_attributes": True}
 

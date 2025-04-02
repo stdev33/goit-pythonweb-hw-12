@@ -1,6 +1,7 @@
-from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Date, Boolean, DateTime, Enum
 from .database import Base
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
+from app.enums import UserRole
 
 
 class Contact(Base):
@@ -49,6 +50,12 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    role = Column(
+        Enum(UserRole, name="user_role_enum"),
+        default=UserRole.user,
+        nullable=False,
+        comment="User role: 'user', 'admin', etc.",
+    )
     last_password_reset = Column(DateTime, default=datetime.now(UTC))
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)

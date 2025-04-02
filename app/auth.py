@@ -1,19 +1,22 @@
 from . import models, schemas
 from .database import get_db
-from .email import send_verification_email, send_reset_password_email
+from .dependencies import require_admin_user, require_admin_user_from_cookie
+from .email_utils import send_verification_email, send_reset_password_email
+from .enums import UserRole
 from .redis_cache import get_redis_client
 from datetime import datetime, timedelta, UTC
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, Depends, status, Form
 from fastapi.requests import Request
 from fastapi.responses import HTMLResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from typing import Optional
-import json
+from urllib.parse import urlencode
 import os
 
 load_dotenv()
@@ -21,14 +24,13 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
-REDIS_CACHE_EXPIRATION = int(os.getenv("REDIS_CACHE_EXPIRATION", 300))
+
 
 templates = Jinja2Templates(directory="templates")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def get_password_hash(password: str) -> str:
@@ -97,74 +99,6 @@ def authenticate_user(db: Session, email: str, password: str):
     return user
 
 
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-) -> schemas.UserResponse:
-    """
-    Retrieves the current user based on the provided JWT token.
-
-    Args:
-        token (str): The JWT token.
-        db (Session): SQLAlchemy session for database access.
-
-    Returns:
-        User: The current authenticated user.
-
-    Raises:
-        HTTPException: If the token is invalid or user is not found.
-    """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-
-        token_iat = payload.get("iat")
-        if token_iat is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    redis_client = get_redis_client()
-
-    redis_key = f"user:{email}"
-    cached_user = redis_client.get(redis_key)
-
-    if cached_user:
-        user = schemas.UserResponse(**json.loads(cached_user))
-        if (
-            user.last_password_reset
-            and token_iat < user.last_password_reset.timestamp()
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token is no longer valid. Please log in again.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return user
-
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if user is None:
-        raise credentials_exception
-
-    if user.last_password_reset and token_iat < user.last_password_reset.timestamp():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token is no longer valid. Please log in again.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    redis_user = schemas.UserResponse.model_validate(user)
-    redis_client.set(redis_key, redis_user.model_dump_json(), ex=REDIS_CACHE_EXPIRATION)
-
-    return schemas.UserResponse.model_validate(user)
-
-
 def create_verification_token(email: str) -> str:
     """
     Creates a JWT token for email verification.
@@ -178,6 +112,40 @@ def create_verification_token(email: str) -> str:
     expire = datetime.now(UTC) + timedelta(hours=24)
     data = {"sub": email, "exp": expire}
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+
+@router.get("/change-role-form", response_class=HTMLResponse)
+def get_change_role_form(
+    request: Request,
+    message: str = "",
+    error: str = "",
+    current_user: schemas.UserResponse = Depends(require_admin_user_from_cookie),
+):
+    return templates.TemplateResponse(
+        "change_role_form.html",
+        {"request": request, "message": message, "error": error},
+    )
+
+
+@router.post("/change-role", response_class=HTMLResponse)
+def change_user_role(
+    email: str = Form(...),
+    new_role: UserRole = Form(...),
+    db: Session = Depends(get_db),
+    current_user: schemas.UserResponse = Depends(require_admin_user_from_cookie),
+):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        params = urlencode({"error": f"User with email '{email}' not found"})
+        return RedirectResponse(url=f"/auth/change-role-form?{params}", status_code=303)
+
+    user.role = new_role
+    db.commit()
+
+    params = urlencode(
+        {"message": f"Role updated to {new_role.value} for user {user.email}"}
+    )
+    return RedirectResponse(url=f"/auth/change-role-form?{params}", status_code=303)
 
 
 @router.post("/request-password-reset", status_code=200)
@@ -298,6 +266,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         verification_token=verification_token,
         is_verified=False,
         is_active=True,
+        role=UserRole.user,
     )
     db.add(db_user)
     db.commit()

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h2>Welcome, {{ user.username }}!</h2>
+    <p>Your role: {{ user.role }}</p>
+
+    <form action="/logout" method="get">
+        <button type="submit">Logout</button>
+    </form>
+
+    {% if user.role == "admin" %}
+        <form action="/auth/change-role-form" method="get">
+            <button type="submit">Go to Role Management</button>
+        </form>
+    {% endif %}
+</body>
+</html>
