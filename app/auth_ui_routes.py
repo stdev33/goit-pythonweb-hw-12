@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 from .database import get_db
 from .models import User
-from .auth import authenticate_user, create_access_token
+from .auth import authenticate_user, create_access_token, register_user
 from .security import get_current_user_or_redirect
+from .schemas import UserCreate
 
 import os
 
@@ -16,6 +17,41 @@ templates = Jinja2Templates(directory="templates")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+
+
+@router.get("/auth/register-form", response_class=HTMLResponse)
+def register_form(request: Request, message: str = "", error: str = ""):
+    return templates.TemplateResponse(
+        "register_form.html", {"request": request, "message": message, "error": error}
+    )
+
+
+@router.post("/auth/register-html")
+def register_html(
+    request: Request,
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        existing_user = db.query(User).filter(User.email == email).first()
+        if existing_user:
+            error = "A user with this email already exists."
+            return templates.TemplateResponse(
+                "register_form.html", {"request": request, "error": error}
+            )
+
+        user_data = UserCreate(username=username, email=email, password=password)
+        register_user(user_data, db)
+        message = "Registration successful. Please log in."
+        return templates.TemplateResponse(
+            "login_form.html", {"request": request, "message": message}
+        )
+    except Exception as e:
+        return templates.TemplateResponse(
+            "register_form.html", {"request": request, "error": str(e)}
+        )
 
 
 @router.get("/auth/login-form", response_class=HTMLResponse)

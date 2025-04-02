@@ -94,9 +94,15 @@ async def upload_avatar_route(
     with open(file_path, "wb") as buffer:
         buffer.write(file.file.read())
 
+    user = db.query(models.User).filter(models.User.id == current_user.id).first()
+
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403, detail="Only admins can update their avatar."
+        )
+
     avatar_url = upload_avatar(file_path, public_id=str(current_user.id))
 
-    user = db.query(models.User).filter(models.User.id == current_user.id).first()
     user.avatar_url = avatar_url
     db.commit()
     db.refresh(user)

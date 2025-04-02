@@ -5,6 +5,9 @@
 </head>
 <body>
     <h2>Login</h2>
+    {% if message %}
+        <p style="color:green;">{{ message }}</p>
+    {% endif %}
     {% if error %}
         <p style="color:red;">{{ error }}</p>
     {% endif %}
@@ -17,5 +20,6 @@
 
         <button type="submit">Login</button>
     </form>
+    <p>Don't have an account? <a href="/auth/register-form">Register here</a></p>
 </body>
 </html>
