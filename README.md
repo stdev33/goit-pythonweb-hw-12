@@ -16,6 +16,9 @@ This is a RESTful API for managing contacts using FastAPI and PostgreSQL. The AP
 - Rate limiting for the `/me` endpoint to prevent abuse
 - CORS enabled for cross-origin requests
 - Fully documented API using Swagger (available at `/docs`)
+- Role-based access control for "user" and "admin"
+- HTML-based login and dashboard for authenticated users
+- Admin-only UI for changing user roles
 
 ## Prerequisites
 Before running the application, ensure you have:
@@ -29,6 +32,7 @@ Ensure your `.env` file includes the following configurations:
 
 ```env
 FRONTEND_URL=http://localhost:8000
+
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your-password
 POSTGRES_DB=contacts_db
@@ -41,6 +45,11 @@ EMAIL_FROM=your-email
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=yours-api-key
 CLOUDINARY_API_SECRET=yours-api-secret
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_CACHE_EXPIRATION=300
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=your_secure_password
 ```
 
 ### Step 2: Build and Run the Application Using Docker Compose
@@ -62,6 +71,32 @@ Once the containers are running, you can access the Swagger documentation at:
 ---
 
 ## API Endpoints
+
+### Admin Panel (HTML UI)
+
+#### Login Form
+**GET** `/auth/login-form`  
+- Displays an HTML login form.
+
+#### Login Submission
+**POST** `/auth/login-html`  
+- Accepts login form data and sets an access token cookie.
+
+#### Dashboard
+**GET** `/dashboard`  
+- Shows a simple dashboard for authenticated users.
+
+#### Logout
+**GET** `/logout`  
+- Logs the user out and clears the access token.
+
+#### Change User Role Form
+**GET** `/auth/change-role-form`  
+- HTML form accessible only to admins to change user roles.
+
+#### Change User Role Submission
+**POST** `/auth/change-role`  
+- Admin-only route to change a user's role via email input.
 
 ### Authentication and User Management
 
@@ -100,7 +135,8 @@ Once the containers are running, you can access the Swagger documentation at:
 
 ### 5. Upload Avatar
 **POST** `/upload-avatar/`
-- **Request Body:** Uploads a file to Cloudinary and updates the user's avatar URL.
+- **Access:** Admin only
+- **Request Body:** Uploads a file to Cloudinary and updates the admin's avatar URL.
 
 ---
 
@@ -146,4 +182,5 @@ Once the containers are running, you can access the Swagger documentation at:
 ## Notes
 - Ensure the `.env` file is correctly configured before starting the application.
 - Run `docker-compose down` to stop the containers when finished.
-
+- The `/upload-avatar` endpoint is now restricted to admin users only.
+- To manage roles, login via the HTML UI and use the `/auth/change-role-form` page.
