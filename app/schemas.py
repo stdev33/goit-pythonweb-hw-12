@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
+from .enums import UserRole
 
 
 class ContactBase(BaseModel):
@@ -23,14 +24,23 @@ class ContactUpdate(ContactBase):
 class ContactResponse(ContactBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class UserCreate(BaseModel):
+    """
+    Schema for user registration request.
+
+    Attributes:
+        username (str): The username of the user.
+        email (EmailStr): The email address of the user.
+        password (str): The password for the user's account.
+    """
+
     username: str
     email: EmailStr
     password: str
+    role: Optional[UserRole] = UserRole.user
 
 
 class UserResponse(BaseModel):
@@ -40,11 +50,24 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     avatar_url: Optional[str] = None
+    last_password_reset: datetime | None = None
+    role: UserRole
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
+
+
+class RefreshTokenResponse(BaseModel):
+    """
+    Schema for returning a refresh token from the API.
+
+    Attributes:
+        refresh_token (str): The refresh token string.
+    """
+
+    refresh_token: str

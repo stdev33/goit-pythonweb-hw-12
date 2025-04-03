@@ -1,5 +1,7 @@
+"""Database configuration and session management for the FastAPI application."""
+
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from .config import DATABASE_URL
 
@@ -10,6 +12,15 @@ Base = declarative_base()
 
 
 def get_db():
+    """
+    Provide a SQLAlchemy database session.
+
+    This function is used as a dependency in FastAPI routes to get a
+    database session. It ensures the session is properly closed after use.
+
+    Yields:
+        Session: A SQLAlchemy database session.
+    """
     db = SessionLocal()
     try:
         yield db

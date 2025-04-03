@@ -1,5 +1,7 @@
 from . import crud, models, schemas
-from .auth import get_current_user
+from .dependencies import require_admin_user_from_cookie
+from .security import get_current_user
+from .auth_ui_routes import router as auth_ui
 from .auth import router as auth_router
 from .cloudinary_service import upload_avatar
 from .database import engine, get_db
@@ -34,13 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-models.Base.metadata.create_all(bind=engine)
-
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
+app.include_router(auth_ui)
 app.include_router(auth_router)
+
+if __name__ == "__main__":
+    models.Base.metadata.create_all(bind=engine)
 
 
 @app.exception_handler(RateLimitExceeded)
@@ -56,22 +60,49 @@ async def rate_limit_exceeded_handler(request, exc):
 async def read_users_me(
     request: Request, current_user: schemas.UserResponse = Depends(get_current_user)
 ):
+    """
+    Retrieve information about the current authenticated user.
+
+    Args:
+        request (Request): The incoming request.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        schemas.UserResponse: The current user's data.
+    """
     return current_user
 
 
 @app.post("/upload-avatar", response_model=schemas.UserResponse)
 async def upload_avatar_route(
     file: UploadFile = File(...),
-    current_user: schemas.UserResponse = Depends(get_current_user),
+    current_user: schemas.UserResponse = Depends(require_admin_user_from_cookie),
     db: Session = Depends(get_db),
 ):
+    """
+    Upload a user avatar to Cloudinary and update the user's profile.
+
+    Args:
+        file (UploadFile): The avatar image file to upload.
+        current_user (schemas.UserResponse): The currently authenticated user.
+        db (Session): The database session.
+
+    Returns:
+        schemas.UserResponse: Updated user data with avatar URL.
+    """
     file_path = f"temp_{file.filename}"
     with open(file_path, "wb") as buffer:
         buffer.write(file.file.read())
 
+    user = db.query(models.User).filter(models.User.id == current_user.id).first()
+
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403, detail="Only admins can update their avatar."
+        )
+
     avatar_url = upload_avatar(file_path, public_id=str(current_user.id))
 
-    user = db.query(models.User).filter(models.User.id == current_user.id).first()
     user.avatar_url = avatar_url
     db.commit()
     db.refresh(user)
@@ -87,6 +118,17 @@ def create_contact(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Create a new contact for the authenticated user.
+
+    Args:
+        contact (schemas.ContactCreate): Contact creation data.
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        schemas.ContactResponse: The created contact's data.
+    """
     return crud.create_contact(db, contact)
 
 
@@ -95,6 +137,16 @@ def get_contacts(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Retrieve all contacts belonging to the authenticated user.
+
+    Args:
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        List[schemas.ContactResponse]: A list of contact data.
+    """
     return crud.get_contacts(db)
 
 
@@ -104,6 +156,20 @@ def get_contact(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Retrieve a specific contact by ID.
+
+    Args:
+        contact_id (int): The ID of the contact.
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        schemas.ContactResponse: The contact data if found.
+
+    Raises:
+        HTTPException: If the contact is not found.
+    """
     contact = crud.get_contact_by_id(db, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -117,6 +183,21 @@ def update_contact(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Update a specific contact by ID.
+
+    Args:
+        contact_id (int): The ID of the contact.
+        contact (schemas.ContactUpdate): Updated contact data.
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        schemas.ContactResponse: The updated contact data.
+
+    Raises:
+        HTTPException: If the contact is not found.
+    """
     updated_contact = crud.update_contact(db, contact_id, contact)
     if not updated_contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -129,6 +210,20 @@ def delete_contact(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Delete a specific contact by ID.
+
+    Args:
+        contact_id (int): The ID of the contact.
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        schemas.ContactResponse: The deleted contact data.
+
+    Raises:
+        HTTPException: If the contact is not found.
+    """
     deleted_contact = crud.delete_contact(db, contact_id)
     if not deleted_contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -141,6 +236,17 @@ def search_contacts(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Search contacts by name or email.
+
+    Args:
+        query (str): The search query string.
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        List[schemas.ContactResponse]: A list of matching contacts.
+    """
     return crud.search_contacts(db, query)
 
 
@@ -149,4 +255,14 @@ def get_upcoming_birthdays(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user),
 ):
+    """
+    Retrieve contacts who have birthdays within the next 7 days.
+
+    Args:
+        db (Session): The database session.
+        current_user (schemas.UserResponse): The currently authenticated user.
+
+    Returns:
+        List[schemas.ContactResponse]: A list of contacts with upcoming birthdays.
+    """
     return crud.get_upcoming_birthdays(db)
