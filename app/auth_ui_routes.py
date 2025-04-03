@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 from .database import get_db
 from .models import User
-from .auth import authenticate_user, create_access_token, register_user
+from .auth import (
+    authenticate_user,
+    create_access_token,
+    create_refresh_token,
+    register_user,
+)
 from .security import get_current_user_or_redirect
 from .schemas import UserCreate
 
@@ -16,7 +21,9 @@ templates = Jinja2Templates(directory="templates")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 15))
+ACCESS_TOKEN_MAX_AGE = int(os.getenv("ACCESS_TOKEN_MAX_AGE", 900))
+REFRESH_TOKEN_MAX_AGE = int(os.getenv("REFRESH_TOKEN_MAX_AGE", 604800))
 
 
 @router.get("/auth/register-form", response_class=HTMLResponse)
@@ -119,8 +126,19 @@ def login_html(
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
+
+    refresh_token = create_refresh_token(data={"sub": user.email})
+
     response = RedirectResponse("/dashboard", status_code=status.HTTP_302_FOUND)
-    response.set_cookie(key="access_token", value=access_token, httponly=True)
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        max_age=ACCESS_TOKEN_MAX_AGE,
+    )
+    response.set_cookie(
+        "refresh_token", refresh_token, httponly=True, max_age=REFRESH_TOKEN_MAX_AGE
+    )
     return response
 
 

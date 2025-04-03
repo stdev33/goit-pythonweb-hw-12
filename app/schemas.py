@@ -58,4 +58,16 @@ class UserResponse(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
+
+
+class RefreshTokenResponse(BaseModel):
+    """
+    Schema for returning a refresh token from the API.
+
+    Attributes:
+        refresh_token (str): The refresh token string.
+    """
+
+    refresh_token: str

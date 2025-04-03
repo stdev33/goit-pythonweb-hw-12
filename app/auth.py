@@ -24,6 +24,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
+ACCESS_TOKEN_EXPIRE_DAYS = int(os.getenv("ACCESS_TOKEN_EXPIRE_DAYS"))
 
 
 templates = Jinja2Templates(directory="templates")
@@ -79,6 +80,23 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode.update({"exp": expire, "iat": datetime.now(UTC).timestamp()})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Generates a JWT refresh token.
+
+    Args:
+        data (dict): The data to include in the token payload.
+        expires_delta (Optional[timedelta]): The token expiration time.
+
+    Returns:
+        str: The generated JWT refresh token.
+    """
+    to_encode = data.copy()
+    expire = datetime.now(UTC) + (expires_delta or timedelta(days=7))
+    to_encode.update({"exp": expire, "iat": datetime.now(UTC).timestamp()})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def authenticate_user(db: Session, email: str, password: str):
@@ -366,4 +384,60 @@ def login_for_access_token(
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token_expires = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_refresh_token(
+        data={"sub": user.email}, expires_delta=refresh_token_expires
+    )
+    expires_at = datetime.now(UTC) + refresh_token_expires
+    db_token = models.RefreshToken(
+        token=refresh_token, user_id=user.id, expires_at=expires_at
+    )
+    db.add(db_token)
+    db.commit()
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
+
+
+@router.post("/refresh-token")
+def refresh_access_token(refresh_token: str = Form(...), db: Session = Depends(get_db)):
+    """
+    Generates a new access token using a valid refresh token stored in the database.
+
+    Args:
+        refresh_token (str): The refresh token.
+        db (Session): The database session.
+
+    Returns:
+        dict: A new access token and token type.
+
+    Raises:
+        HTTPException: If the refresh token is invalid, expired, or not found.
+    """
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid token")
+
+        # Validate token in DB
+        token_in_db = (
+            db.query(models.RefreshToken)
+            .filter(models.RefreshToken.token == refresh_token)
+            .first()
+        )
+        if not token_in_db or token_in_db.expires_at < datetime.now(UTC):
+            raise HTTPException(
+                status_code=401, detail="Refresh token is invalid or expired"
+            )
+
+        new_access_token = create_access_token(data={"sub": email})
+        return {
+            "access_token": new_access_token,
+            "token_type": "bearer",
+        }
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")

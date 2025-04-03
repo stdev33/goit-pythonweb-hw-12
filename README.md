@@ -138,6 +138,20 @@ Once the containers are running, you can access the Swagger documentation at:
   ```
 - **Response:** Access token in JSON format for use in authenticated requests.
 
+### 3a. Refresh Access Token
+**POST** `/auth/refresh-token`
+- **Description:** Generates a new access token using a valid refresh token.
+- **Access:** Requires valid `refresh_token` to be sent in a cookie or request body.
+- **Response:**
+  ```json
+  {
+    "access_token": "<new_access_token>",
+    "token_type": "bearer"
+  }
+  ```
+- **Errors:**
+  - `401 Unauthorized`: If token is missing, expired, or invalid.
+
 ### 4. Access User Profile Information
 **GET** `/me`
 - Retrieves the profile information of the currently authenticated user.
