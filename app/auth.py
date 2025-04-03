@@ -121,6 +121,18 @@ def get_change_role_form(
     error: str = "",
     current_user: schemas.UserResponse = Depends(require_admin_user_from_cookie),
 ):
+    """
+    Renders the HTML form for changing a user's role.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        message (str): Optional success message to display.
+        error (str): Optional error message to display.
+        current_user (UserResponse): The currently authenticated admin user.
+
+    Returns:
+        HTMLResponse: The rendered change-role form.
+    """
     return templates.TemplateResponse(
         "change_role_form.html",
         {"request": request, "message": message, "error": error},
@@ -134,6 +146,18 @@ def change_user_role(
     db: Session = Depends(get_db),
     current_user: schemas.UserResponse = Depends(require_admin_user_from_cookie),
 ):
+    """
+    Handles form submission to change a user's role.
+
+    Args:
+        email (str): The target user's email.
+        new_role (UserRole): The new role to assign.
+        db (Session): The database session.
+        current_user (UserResponse): The currently authenticated admin user.
+
+    Returns:
+        HTMLResponse: Redirects to the change-role form with a message.
+    """
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
         params = urlencode({"error": f"User with email '{email}' not found"})

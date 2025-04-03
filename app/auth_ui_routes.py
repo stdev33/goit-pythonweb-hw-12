@@ -21,6 +21,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
 @router.get("/auth/register-form", response_class=HTMLResponse)
 def register_form(request: Request, message: str = "", error: str = ""):
+    """
+    Render the user registration form.
+
+    Args:
+        request (Request): The incoming HTTP request.
+
+    Returns:
+        TemplateResponse: The rendered HTML page for registration.
+    """
     return templates.TemplateResponse(
         "register_form.html", {"request": request, "message": message, "error": error}
     )
@@ -34,6 +43,20 @@ def register_html(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    """
+    Handle user registration via HTML form.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        username (str): The entered username.
+        email (str): The entered email.
+        password (str): The entered password.
+        db (Session): The database session.
+
+    Returns:
+        TemplateResponse: The login page if registration is successful,
+                          otherwise the registration form with an error message.
+    """
     try:
         existing_user = db.query(User).filter(User.email == email).first()
         if existing_user:
@@ -56,6 +79,15 @@ def register_html(
 
 @router.get("/auth/login-form", response_class=HTMLResponse)
 def login_form(request: Request):
+    """
+    Render the login form.
+
+    Args:
+        request (Request): The incoming HTTP request.
+
+    Returns:
+        TemplateResponse: The rendered login form.
+    """
     return templates.TemplateResponse("login_form.html", {"request": request})
 
 
@@ -66,6 +98,19 @@ def login_html(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    """
+    Handle login form submission.
+
+    Args:
+        response (Response): The HTTP response object.
+        username (str): The entered username (email).
+        password (str): The entered password.
+        db (Session): The database session.
+
+    Returns:
+        RedirectResponse: Redirect to dashboard if login is successful,
+                          otherwise raises HTTPException.
+    """
     user = authenticate_user(db, username, password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -83,6 +128,16 @@ def login_html(
 def dashboard(
     request: Request, current_user: User = Depends(get_current_user_or_redirect)
 ):
+    """
+    Render the dashboard page for authenticated users.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        current_user (User): The currently authenticated user.
+
+    Returns:
+        TemplateResponse: The rendered dashboard page.
+    """
     return templates.TemplateResponse(
         "dashboard.html", {"request": request, "user": current_user}
     )
@@ -92,6 +147,16 @@ def dashboard(
 def logout(
     request: Request, current_user: User = Depends(get_current_user_or_redirect)
 ):
+    """
+    Handle user logout by clearing the access token cookie.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        current_user (User): The currently authenticated user.
+
+    Returns:
+        RedirectResponse: Redirect to the login form.
+    """
     response = RedirectResponse("/auth/login-form", status_code=status.HTTP_302_FOUND)
     response.delete_cookie("access_token")
     return response

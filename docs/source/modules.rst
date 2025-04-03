@@ -17,6 +17,14 @@ Authentication
    :undoc-members:
    :show-inheritance:
 
+Authentication UI Routes
+-------------------------
+
+.. automodule:: app.auth_ui_routes
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 CRUD Operations
 ---------------
 
@@ -44,7 +52,7 @@ Database
 Email Service
 -------------
 
-.. automodule:: app.email
+.. automodule:: app.email_utils
    :members:
    :undoc-members:
    :show-inheritance:
@@ -66,3 +74,11 @@ Schemas
    :undoc-members:
    :show-inheritance:
    :no-index:
+
+Dependencies
+------------
+
+.. automodule:: app.dependencies
+   :members:
+   :undoc-members:
+   :show-inheritance:

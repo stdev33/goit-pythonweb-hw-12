@@ -74,6 +74,16 @@ Once the containers are running, you can access the Swagger documentation at:
 
 ### Admin Panel (HTML UI)
 
+#### Registration Form  
+**GET** `/auth/register-form`  
+- Displays an HTML form for user registration.
+
+#### Registration Submission  
+**POST** `/auth/register-html`  
+- Handles registration form submission.  
+- On success, shows the login form with a success message.  
+- On error, re-renders the form with an error message.
+
 #### Login Form
 **GET** `/auth/login-form`  
 - Displays an HTML login form.
